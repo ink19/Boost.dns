@@ -109,7 +109,6 @@ public:
     ssl::stream<tcp::socket> stream(context, ctx);
     co_await stream.lowest_layer().async_connect(endpoints->endpoint(),
                                                  asio::use_awaitable);
-    BOOST_LOG_TRIVIAL(info) << "SSL handshake";
     if (!SSL_set_tlsext_host_name(stream.native_handle(), m_host.c_str())) {
       boost::system::error_code ec{static_cast<int>(::ERR_get_error()),
                                    boost::asio::error::get_ssl_category()};
@@ -118,23 +117,24 @@ public:
     }
     co_await stream.async_handshake(ssl::stream_base::client,
                                     asio::use_awaitable);
+    
+    std::vector<boost::asio::const_buffer> req_buff;
+    uint16_t send_len = req.size();
+    send_len = htons(send_len);
+    req_buff.push_back(asio::buffer(&send_len, sizeof(send_len)));
+    req_buff.push_back(asio::buffer(req.data(), req.size()));
 
-    boost::asio::const_buffer req_buff(req.data(), req.size());
     co_await stream.async_write_some(req_buff, asio::use_awaitable);
 
     char buff[1024];
-    boost::asio::mutable_buffer response(buff, 1024);
+    int n = co_await asio::async_read(stream, asio::buffer(buff, 2), asio::use_awaitable);
 
-    co_await stream.async_read_some(response, asio::use_awaitable);
+    int recv_len = ntohs(*(uint16_t *)buff);
+    n = co_await asio::async_read(stream, asio::buffer(buff, recv_len), asio::use_awaitable);
+
     // co_await stream.async_shutdown(asio::use_awaitable);
     stream.lowest_layer().close();
-
-    auto rsp =  std::string((unsigned char *)response.data(),
-                          (unsigned char *)response.data() + response.size());
-
-    BOOST_LOG_TRIVIAL(info) << base64_encode(rsp);
-
-    co_return rsp;
+    co_return std::string(buff, buff + n);
   }
 
 private:
@@ -142,18 +142,18 @@ private:
   std::string m_port;
 };
 
-
 template<typename ProtocolType>
 class BaseResolver {
 public:
   BaseResolver(NetProtocol &protocol) : m_protocol(protocol) {}
-  virtual boost::asio::awaitable<boost::asio::ip::basic_resolver_results<tcp>>
+  virtual boost::asio::awaitable<boost::asio::ip::basic_resolver_results<ProtocolType>>
   resolve(const std::string &host, const std::string &port) {
     unsigned char *buff;
     int len;
     ares_create_query(host.c_str(), ns_c_in, ns_t_a, 1024, 3, &buff, &len, 512);
     const auto rsp =
         co_await m_protocol.request(std::string(buff, buff + len));
+    ares_free_string(buff);
 
     struct hostent *hosts;
     int ret = ares_parse_a_reply((const unsigned char *)rsp.data(), rsp.size(),
@@ -161,10 +161,10 @@ public:
     if (ret != ARES_SUCCESS) {
       BOOST_LOG_TRIVIAL(error)
           << boost::format("ares_parse_a_reply failed. code: {}, message: {}")%ret%ares_strerror(ret);
-      co_return boost::asio::ip::basic_resolver_results<tcp>();
+      co_return boost::asio::ip::basic_resolver_results<ProtocolType>();
     }
 
-    std::vector<boost::asio::ip::tcp::endpoint> results;
+    std::vector<boost::asio::ip::basic_endpoint<ProtocolType>> results;
     for (int i = 0; hosts->h_addr_list[i] != NULL; ++i) {
       boost::asio::ip::basic_endpoint<ProtocolType> ep(
           boost::asio::ip::make_address_v4(

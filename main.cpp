@@ -18,10 +18,10 @@ namespace http = beast::http;
 
 
 boost::asio::awaitable<void> run() {
-    auto p = SSLNetProtocol("dot.pub");
-    // auto p = HTTPSNetProtocol("https://doh.pub/dns-query");
-    auto resolver = BaseResolver<boost::asio::ip::tcp>(p);
-    auto results = co_await resolver.resolve("baidu.com", "443");
+    // auto p = SSLNetProtocol("dot.pub");
+    auto p = HTTPSNetProtocol("https://doh.pub/dns-query");
+    auto resolver = BaseResolver<boost::asio::ip::udp>(p);
+    auto results = co_await resolver.resolve("home.ink19.cn", "443");
     BOOST_LOG_TRIVIAL(info) << results.size();
     for (auto&& result : results) {
         std::cout << result.host_name() << std::endl;
