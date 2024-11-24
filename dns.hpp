@@ -10,7 +10,7 @@
 #include <boost/log/core.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/url.hpp>
-#include <fmt/format.h>
+#include <boost/format.hpp>
 #include <string>
 
 namespace asio = boost::asio;
@@ -160,8 +160,7 @@ public:
                                  &hosts, NULL, NULL);
     if (ret != ARES_SUCCESS) {
       BOOST_LOG_TRIVIAL(error)
-          << fmt::format("ares_parse_a_reply failed. code: {}, message: {}",
-                         ret, ares_strerror(ret));
+          << boost::format("ares_parse_a_reply failed. code: {}, message: {}")%ret%ares_strerror(ret);
       co_return boost::asio::ip::basic_resolver_results<tcp>();
     }
 

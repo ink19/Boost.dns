@@ -8,7 +8,6 @@
 #include <boost/beast.hpp>
 #include <ares.h>
 #include <arpa/nameser.h>
-#include <fmt/format.h>
 #include "dns.hpp"
 
 namespace asio = boost::asio;
